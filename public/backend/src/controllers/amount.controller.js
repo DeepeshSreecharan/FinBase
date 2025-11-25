@@ -1,90 +1,121 @@
-const User = require("../models/UserModel");
+// backend/src/controllers/amount.controller.js
+const Account = require('../models/AccountModel');
+const Transaction = require('../models/TransactionModel'); // optional but recommended
+const User = require('../models/UserModel');
 
-// Add money
-exports.addMoney = async (req, res) => {
+const addMoney = async (req, res) => {
   try {
     const { amount } = req.body;
-    const userId = req.user._id;
+    const userId = req.userId || (req.user && req.user._id);
 
     if (!amount || amount <= 0)
       return res.status(400).json({ message: "Amount must be > 0" });
 
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    if (!Array.isArray(user.accounts)) user.accounts = [];
-
-    let account = user.accounts[0];
+    // Find user's account (one account per user in your app)
+    let account = await Account.findOne({ userId });
     if (!account) {
-      account = {
-        accountNumber: `AC${Date.now()}`,
-        accountType: "savings",
+      // If you want to create account automatically:
+      account = new Account({
+        userId,
+        accountNumber: `CBI${Date.now()}${Math.floor(Math.random() * 1000)}`,
+        accountType: 'savings',
         balance: 0,
-      };
-      user.accounts.push(account);
+        status: 'active'
+      });
     }
 
-    account.balance += amount;
-    await user.save();
+    account.balance = Number(account.balance) + Number(amount);
+    await account.save();
+
+    // Optional: create transaction record for audit trail
+    try {
+      await Transaction.create({
+        userId,
+        accountId: account._id,
+        type: 'credit',
+        amount: Number(amount),
+        description: 'Manual add money',
+        status: 'completed',
+        balanceAfter: account.balance
+      });
+    } catch (txErr) {
+      console.warn('Warning: failed to create transaction record:', txErr.message);
+    }
 
     return res.status(200).json({ message: `${amount} added successfully`, account });
   } catch (err) {
     console.error("Add money error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
-// Deduct money
-exports.deductMoney = async (req, res) => {
+const deductMoney = async (req, res) => {
   try {
     const { amount } = req.body;
-    const userId = req.user._id;
+    const userId = req.userId || (req.user && req.user._id);
 
     if (!amount || amount <= 0)
       return res.status(400).json({ message: "Amount must be > 0" });
 
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // Use Account model — this is the key fix
+    const account = await Account.findOne({ userId });
+    if (!account) return res.status(404).json({ message: "No account found" });
 
-    if (!Array.isArray(user.accounts)) user.accounts = [];
+    if (Number(account.balance) < Number(amount)) {
+      return res.status(400).json({ message: "Insufficient balance" });
+    }
 
-    let account = user.accounts[0];
-    if (!account) return res.status(400).json({ message: "No account found" });
-    if (account.balance < amount) return res.status(400).json({ message: "Insufficient balance" });
+    account.balance = Number(account.balance) - Number(amount);
+    await account.save();
 
-    account.balance -= amount;
-    await user.save();
+    // Optional: transaction record
+    try {
+      await Transaction.create({
+        userId,
+        accountId: account._id,
+        type: 'debit',
+        amount: Number(amount),
+        description: 'Manual deduct money',
+        status: 'completed',
+        balanceAfter: account.balance
+      });
+    } catch (txErr) {
+      console.warn('Warning: failed to create transaction record:', txErr.message);
+    }
 
     return res.status(200).json({ message: `${amount} deducted successfully`, account });
   } catch (err) {
     console.error("Deduct money error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 };
 
-// Get balance
-exports.getBalance = async (req, res) => {
+const getBalance = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const userId = req.userId || (req.user && req.user._id);
 
-    if (!Array.isArray(user.accounts)) user.accounts = [];
-
-    let account = user.accounts[0];
+    let account = await Account.findOne({ userId });
     if (!account) {
-      account = {
-        accountNumber: `AC${Date.now()}`,
-        accountType: "savings",
+      // If you prefer to auto-create (as earlier controller did), create default
+      account = new Account({
+        userId,
+        accountNumber: `CBI${Date.now()}${Math.floor(Math.random() * 1000)}`,
+        accountType: 'savings',
         balance: 0,
-      };
-      user.accounts.push(account);
-      await user.save();
+        status: 'active'
+      });
+      await account.save();
     }
 
     return res.status(200).json(account);
   } catch (err) {
     console.error("Get balance error:", err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
+};
+
+module.exports = {
+  addMoney,
+  deductMoney,
+  getBalance
 };

@@ -70,7 +70,7 @@ const ATMCards = () => {
       });
       setShowRequestForm(false);
       setRequestForm({ cardType: 'debit', deliveryAddress: '' });
-      // Open PIN form automatically
+
       setSelectedCard(response.card.id);
       setShowPinForm(true);
       fetchCards();
@@ -139,9 +139,18 @@ const ATMCards = () => {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container mx-auto px-4 py-8">
+
+      {/* ★ Back Button */}
+      <div className="container mx-auto px-4 py-4">
+        <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+          ← Back to Dashboard
+        </Button>
+      </div>
+
+      <main className="container mx-auto px-4 py-4">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">ATM Cards</h1>
+
           <Dialog open={showRequestForm} onOpenChange={setShowRequestForm}>
             <DialogTrigger asChild>
               <Button>
@@ -149,15 +158,18 @@ const ATMCards = () => {
                 Request New Card
               </Button>
             </DialogTrigger>
+
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Request New ATM Card</DialogTitle>
               </DialogHeader>
+
               <form onSubmit={handleRequestCard} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="cardType">Card Type</Label>
                   <Input value="Debit Card" disabled />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="deliveryAddress">Delivery Address</Label>
                   <Textarea
@@ -168,11 +180,12 @@ const ATMCards = () => {
                     required
                   />
                 </div>
+
                 <div className="flex gap-2">
                   <Button type="submit" disabled={loading}>
                     {loading ? "Requesting..." : "Request Card"}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => setShowRequestForm(false)}>
+                  <Button variant="outline" type="button" onClick={() => setShowRequestForm(false)}>
                     Cancel
                   </Button>
                 </div>
@@ -181,13 +194,16 @@ const ATMCards = () => {
           </Dialog>
         </div>
 
+        {/* Cards List */}
         <div className="grid gap-6">
           {cards.length === 0 ? (
             <Card>
               <CardContent className="text-center py-8">
                 <CreditCard className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-semibold mb-2">No ATM Cards</h3>
-                <p className="text-muted-foreground mb-4">You don't have any ATM cards yet.</p>
+                <p className="text-muted-foreground mb-4">
+                  You don't have any ATM cards yet.
+                </p>
                 <Button onClick={() => setShowRequestForm(true)}>
                   Request Your First Card
                 </Button>
@@ -203,20 +219,18 @@ const ATMCards = () => {
                         <CreditCard className="h-5 w-5" />
                         {card.cardType.toUpperCase()} Card
                       </CardTitle>
-                      <p className="text-muted-foreground mt-1">
-                        {showPin ? card.cardNumber : card.cardNumber}
-                      </p>
+                      <p className="text-muted-foreground mt-1">{card.cardNumber}</p>
                     </div>
+
                     <div className="flex flex-col items-end gap-2">
                       <Badge className={getStatusColor(card.status)}>
                         {card.status.toUpperCase()}
                       </Badge>
-                      {card.isBlocked && (
-                        <Badge variant="destructive">BLOCKED</Badge>
-                      )}
+                      {card.isBlocked && <Badge variant="destructive">BLOCKED</Badge>}
                     </div>
                   </div>
                 </CardHeader>
+
                 <CardContent>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4 text-sm">
@@ -226,11 +240,10 @@ const ATMCards = () => {
                           {new Date(card.expiryDate).toLocaleDateString()}
                         </p>
                       </div>
+
                       <div>
                         <p className="text-muted-foreground">PIN Status</p>
-                        <p className="font-medium">
-                          {card.pinSet ? 'Set' : 'Not Set'}
-                        </p>
+                        <p className="font-medium">{card.pinSet ? 'Set' : 'Not Set'}</p>
                       </div>
                     </div>
 
@@ -242,40 +255,40 @@ const ATMCards = () => {
                               Set PIN
                             </Button>
                           </DialogTrigger>
+
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Set ATM PIN</DialogTitle>
                             </DialogHeader>
+
                             <form onSubmit={handleSetPin} className="space-y-4">
                               <div className="space-y-2">
-                                <Label htmlFor="pin">New PIN</Label>
+                                <Label>New PIN</Label>
                                 <Input
-                                  id="pin"
                                   type="password"
                                   maxLength={4}
                                   value={pinForm.pin}
                                   onChange={(e) => setPinForm({ ...pinForm, pin: e.target.value })}
-                                  placeholder="Enter 4-digit PIN"
                                   required
                                 />
                               </div>
+
                               <div className="space-y-2">
-                                <Label htmlFor="confirmPin">Confirm PIN</Label>
+                                <Label>Confirm PIN</Label>
                                 <Input
-                                  id="confirmPin"
                                   type="password"
                                   maxLength={4}
                                   value={pinForm.confirmPin}
                                   onChange={(e) => setPinForm({ ...pinForm, confirmPin: e.target.value })}
-                                  placeholder="Confirm 4-digit PIN"
                                   required
                                 />
                               </div>
+
                               <div className="flex gap-2">
                                 <Button type="submit" disabled={loading}>
                                   {loading ? "Setting..." : "Set PIN"}
                                 </Button>
-                                <Button type="button" variant="outline" onClick={() => setShowPinForm(false)}>
+                                <Button variant="outline" onClick={() => setShowPinForm(false)}>
                                   Cancel
                                 </Button>
                               </div>
@@ -295,28 +308,16 @@ const ATMCards = () => {
                             {card.isBlocked ? 'Unblock' : 'Block'}
                           </Button>
 
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setShowPin(!showPin)}
-                          >
+                          <Button size="sm" variant="outline" onClick={() => setShowPin(!showPin)}>
                             {showPin ? <EyeOff className="mr-1 h-3 w-3" /> : <Eye className="mr-1 h-3 w-3" />}
                             {showPin ? 'Hide' : 'Show'} Details
                           </Button>
 
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => navigate("/accounts")}
-                          >
+                          <Button size="sm" variant="outline" onClick={() => navigate("/accounts")}>
                             Add / Withdraw Money
                           </Button>
 
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => navigate("/transactions")}
-                          >
+                          <Button size="sm" variant="outline" onClick={() => navigate("/transactions")}>
                             Transactions
                           </Button>
                         </>

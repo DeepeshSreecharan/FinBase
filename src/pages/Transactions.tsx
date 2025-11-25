@@ -27,7 +27,8 @@ const Transactions = () => {
   // pagination + filters
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
-  const [type, setType] = useState<string>("");
+  // Use "all" as canonical value so Select never receives empty string
+  const [type, setType] = useState<string>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
@@ -36,28 +37,47 @@ const Transactions = () => {
   const fetchTransactions = async () => {
     setLoading(true);
     try {
-      const res = await apiService.getTransactions({
+      // Build params and only include type if it's not "all"
+      const params: any = {
         page,
         limit,
-        type,
-        startDate,
-        endDate,
-      });
+      };
+      if (type && type !== "all") params.type = type;
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+
+      const res = await apiService.getTransactions(params);
 
       // backend response expected: { transactions: [...], totalPages: X }
-      const formatted = (res.transactions || []).map((t: any) => ({
-        id: t._id || t.id,
-        type: t.type.toLowerCase(),
-        amount: t.amount,
-        description: t.description || (t.type === "credit" ? "Money Credited" : "Money Debited"),
-        date: new Date(t.createdAt || t.date).toLocaleDateString(),
-        status: t.status || "Completed",
-      }));
+      const rawTxs = Array.isArray(res.transactions) ? res.transactions : [];
+      const formatted = rawTxs.map((t: any) => {
+        const rawType = (t.type || "").toString().trim().toLowerCase();
+        const normalizedType: "credit" | "debit" =
+          rawType === "debit" ? "debit" : "credit"; // default to credit if unknown
+
+        const created = t.createdAt || t.date;
+        const dateObj = created ? new Date(created) : new Date();
+        const dateStr = isNaN(dateObj.getTime()) ? String(created || "") : dateObj.toLocaleDateString();
+
+        const amountNum = Number(t.amount || 0);
+
+        return {
+          id: t._id || t.id,
+          type: normalizedType,
+          amount: amountNum,
+          description:
+            t.description || (normalizedType === "credit" ? "Money Credited" : "Money Debited"),
+          date: dateStr,
+          status: t.status || "Completed",
+        } as Transaction;
+      });
 
       setTransactions(formatted);
       setTotalPages(res.totalPages || 1);
     } catch (err) {
       console.error("❌ Error fetching transactions:", err);
+      // ensure UI shows empty state rather than undefined
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -82,12 +102,13 @@ const Transactions = () => {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-4">
-          <Select value={type} onValueChange={setType}>
+          <Select value={type} onValueChange={(v) => setType(v || "all")}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Filter by type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
+              {/* value must not be empty string for Radix Select */}
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="credit">Credit</SelectItem>
               <SelectItem value="debit">Debit</SelectItem>
             </SelectContent>
@@ -96,7 +117,15 @@ const Transactions = () => {
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
 
-          <Button variant="secondary" onClick={() => { setStartDate(""); setEndDate(""); setType(""); setPage(1); }}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setStartDate("");
+              setEndDate("");
+              setType("all");
+              setPage(1);
+            }}
+          >
             Reset
           </Button>
         </div>

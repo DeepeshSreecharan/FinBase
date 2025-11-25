@@ -3,7 +3,10 @@ class ApiService {
   baseURL: string;
 
   constructor() {
-    this.baseURL = "http://localhost:5000/api";
+    // Allow environment override (Vite)
+    this.baseURL =
+      (import.meta.env && (import.meta.env as any).VITE_API_URL) ||
+      "http://localhost:5000/api";
   }
 
   // ------------------------
@@ -22,11 +25,27 @@ class ApiService {
   }
 
   private async handleResponse(response: Response) {
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || "Something went wrong");
+    // First try to parse JSON safely
+    let data: any = null;
+
+    try {
+      data = await response.json();
+    } catch {
+      // If response isn't JSON (HTML, error page, empty), fallback to text
+      data = await response.text().catch(() => null);
     }
-    return response.json();
+
+    // If status is NOT ok → throw a readable error
+    if (!response.ok) {
+      const message =
+        (data && data.message) ||
+        (typeof data === "string" ? data : null) ||
+        `Request failed (${response.status})`;
+
+      throw new Error(message);
+    }
+
+    return data;
   }
 
   // ------------------------
@@ -111,9 +130,12 @@ class ApiService {
       }, {} as Record<string, string>)
     );
 
-    const response = await fetch(`${this.baseURL}/transactions?${query.toString()}`, {
-      headers: this.getAuthHeaders(),
-    });
+    const response = await fetch(
+      `${this.baseURL}/transactions?${query.toString()}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
     return this.handleResponse(response);
   }
 
@@ -121,14 +143,14 @@ class ApiService {
   // 💳 ATM Card APIs
   // ------------------------
   async getATMCards() {
-    const response = await fetch(`${this.baseURL}/atm-cards`, {
+    const response = await fetch(`${this.baseURL}/atm`, {
       headers: this.getAuthHeaders(),
     });
     return this.handleResponse(response);
   }
 
   async requestATMCard(data: { cardType: string; deliveryAddress: string }) {
-    const response = await fetch(`${this.baseURL}/atm-cards/request`, {
+    const response = await fetch(`${this.baseURL}/atm/request`, {
       method: "POST",
       headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
@@ -137,7 +159,7 @@ class ApiService {
   }
 
   async setATMPin(data: { cardId: string; pin: string; confirmPin: string }) {
-    const response = await fetch(`${this.baseURL}/atm-cards/set-pin`, {
+    const response = await fetch(`${this.baseURL}/atm/set-pin`, {
       method: "POST",
       headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
@@ -146,7 +168,7 @@ class ApiService {
   }
 
   async toggleBlockCard(cardId: string, action: "block" | "unblock") {
-    const response = await fetch(`${this.baseURL}/atm-cards/${cardId}/${action}`, {
+    const response = await fetch(`${this.baseURL}/atm/${cardId}/${action}`, {
       method: "POST",
       headers: this.getAuthHeaders(),
     });
@@ -154,17 +176,19 @@ class ApiService {
   }
 
   // ------------------------
-  // 🏦 Fixed Deposit APIs
+  // 🏦 FIXED DEPOSIT APIs (FIXED!!)
+  // Backend path is /api/fd
   // ------------------------
+
   async getFDs() {
-    const response = await fetch(`${this.baseURL}/fixed-deposits`, {
+    const response = await fetch(`${this.baseURL}/fd`, {
       headers: this.getAuthHeaders(),
     });
     return this.handleResponse(response);
   }
 
   async createFD(data: { amount: number; tenure: number }) {
-    const response = await fetch(`${this.baseURL}/fixed-deposits/create`, {
+    const response = await fetch(`${this.baseURL}/fd/create`, {
       method: "POST",
       headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
@@ -173,7 +197,7 @@ class ApiService {
   }
 
   async breakFD(fdId: string) {
-    const response = await fetch(`${this.baseURL}/fixed-deposits/${fdId}/break`, {
+    const response = await fetch(`${this.baseURL}/fd/${fdId}/break`, {
       method: "POST",
       headers: this.getAuthHeaders(),
     });
@@ -181,23 +205,21 @@ class ApiService {
   }
 
   // ------------------------
-  // 📩 Contact / Support API
+  // 📩 Contact
   // ------------------------
-  async submitContact(data: {
-    name: string;
-    email: string;
-    phone?: string;
-    subject: string;
-    message: string;
-  }) {
-    const response = await fetch(`${this.baseURL}/contact`, {
-      method: "POST",
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(data),
-    });
-    return this.handleResponse(response);
-  }
-}
-
+async submitContact(data: {
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+}) {
+  const response = await fetch(`${this.baseURL}/contact/submit`, {
+    method: "POST",
+    headers: this.getAuthHeaders(), // public route but OK to send auth header if present
+    body: JSON.stringify(data),
+  });
+  return this.handleResponse(response);
+}}
 const apiService = new ApiService();
 export default apiService;

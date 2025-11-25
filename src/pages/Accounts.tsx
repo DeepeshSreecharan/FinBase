@@ -50,7 +50,11 @@ const Accounts: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || amount <= 0) {
-      toast({ title: "Invalid amount", description: "Enter a valid amount > 0", variant: "destructive" });
+      toast({
+        title: "Invalid amount",
+        description: "Enter a valid amount > 0",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -78,7 +82,7 @@ const Accounts: React.FC = () => {
         },
         body: JSON.stringify({
           amount,
-          accountNumber: account.accountNumber, // crucial for deduct
+          accountNumber: account.accountNumber,
         }),
       });
 
@@ -95,13 +99,15 @@ const Accounts: React.FC = () => {
         if (userDataStr) {
           const user = JSON.parse(userDataStr);
           user.accounts = user.accounts || [];
-          const idx = user.accounts.findIndex((acc: any) => acc.accountNumber === data.account.accountNumber);
+          const idx = user.accounts.findIndex(
+            (acc: any) => acc.accountNumber === data.account.accountNumber
+          );
           if (idx >= 0) user.accounts[idx].balance = data.account.balance;
           else user.accounts.push(data.account);
           localStorage.setItem("cbiuserdata", JSON.stringify(user));
         }
 
-        // Trigger dashboard refresh for balance & transactions
+        // Trigger dashboard refresh
         window.dispatchEvent(new Event("refreshDashboard"));
       } else {
         setStatus(data.message || "Operation failed");
@@ -117,7 +123,15 @@ const Accounts: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
-      <div className="flex-1 flex items-center justify-center py-16">
+
+      {/* TOP BACK BUTTON */}
+      <div className="container mt-6">
+        <Button variant="outline" onClick={() => navigate("/dashboard")}>
+          ← Back to Dashboard
+        </Button>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center py-12">
         <div className="bg-white shadow rounded-lg p-8 w-full max-w-md">
           <h2 className="text-2xl font-semibold mb-6 text-center">
             {isAddMode ? "Add Money" : "Deduct Money"}
@@ -145,22 +159,25 @@ const Accounts: React.FC = () => {
               className="w-full py-2 px-4 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
               disabled={loading}
             >
-              {loading ? (isAddMode ? "Adding..." : "Deducting...") : isAddMode ? "Add Money" : "Deduct Money"}
+              {loading
+                ? isAddMode
+                  ? "Adding..."
+                  : "Deducting..."
+                : isAddMode
+                ? "Add Money"
+                : "Deduct Money"}
             </button>
           </form>
 
-          {status === "success" && <div className="text-green-600 text-center mt-4">Operation successful!</div>}
-          {status && status !== "success" && <div className="text-red-500 text-center mt-4">{status}</div>}
-
-          <Button
-            variant="outline"
-            className="w-full mt-6"
-            onClick={() => navigate("/dashboard")}
-          >
-            Back to Dashboard
-          </Button>
+          {status === "success" && (
+            <div className="text-green-600 text-center mt-4">Operation successful!</div>
+          )}
+          {status && status !== "success" && (
+            <div className="text-red-500 text-center mt-4">{status}</div>
+          )}
         </div>
       </div>
+
       <Footer />
     </div>
   );

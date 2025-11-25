@@ -1,59 +1,87 @@
-import { Footer } from "@/components/Layout/Footer"
-import { Header } from "@/components/Layout/Header"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { HeroButton } from "@/components/ui/hero-button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useToast } from "@/hooks/use-toast"
-import { ArrowLeft, Eye, EyeOff, Lock, Mail } from "lucide-react"
-import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+// src/pages/Login.tsx
+import { Footer } from "@/components/Layout/Footer";
+import { Header } from "@/components/Layout/Header";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { HeroButton } from "@/components/ui/hero-button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { ArrowLeft, Eye, EyeOff, Lock, Mail } from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Login = () => {
-  const navigate = useNavigate()
-  const { toast } = useToast()
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
     password: ""
-  })
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
+    e.preventDefault();
+    setLoading(true);
+
     try {
+      // normalize email (important — registration lowercases email on the server).
+      const payload = {
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password // do NOT trim password (users may intentionally have spaces)
+      };
+
+      // quick client-side checks
+      if (!payload.email || !payload.password) {
+        toast({ title: "Missing fields", description: "Please enter email and password", variant: "destructive" });
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      })
+        body: JSON.stringify(payload),
+      });
 
-      const data = await response.json()
+      // Read server body safely (it returns JSON for validation/errors)
+      const data = await response.json().catch(() => ({}));
+
       if (response.ok && data.token) {
-        localStorage.setItem('cbiusertoken', data.token)
-        if (data.user) {
-          localStorage.setItem('cbiuserdata', JSON.stringify(data.user))
-        }
+        localStorage.setItem('cbiusertoken', data.token);
+        if (data.user) localStorage.setItem('cbiuserdata', JSON.stringify(data.user));
+
         toast({
           title: "Welcome back!",
           description: "You have successfully logged in to your CBI Bank account.",
-        })
-        navigate('/dashboard')
+        });
+
+        navigate('/dashboard');
       } else {
-        throw new Error(data.message || "Please check your credentials and try again.")
+        // If validation or auth failed, show server-provided message(s)
+        const serverMsg = data.message || "Please check your credentials and try again.";
+
+        // If the server returned validation errors array (validation.middleware shape), show first few
+        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          data.errors.slice(0, 3).forEach((err: any) => {
+            toast({ title: err.field || "Validation", description: err.message, variant: "destructive" });
+          });
+        } else {
+          toast({ title: "Login failed", description: serverMsg, variant: "destructive" });
+        }
+
+        throw new Error(serverMsg);
       }
     } catch (error: any) {
-      toast({
-        title: "Login failed",
-        description: error.message || "Please check your credentials and try again.",
-        variant: "destructive"
-      })
+      // Already displayed the server message above; this ensures unexpected errors are also shown
+      if (!error?.message) {
+        toast({ title: "Login failed", description: "Unexpected error. Check server logs.", variant: "destructive" });
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -114,11 +142,7 @@ const Login = () => {
                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                       onClick={() => setShowPassword(!showPassword)}
                     >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -163,7 +187,7 @@ const Login = () => {
       </div>
       <Footer />
     </div>
-  )
-}
+  );
+};
 
-export default Login
+export default Login;

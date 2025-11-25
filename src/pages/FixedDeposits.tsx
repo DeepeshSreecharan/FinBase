@@ -1,3 +1,4 @@
+// src/pages/FixedDeposits.tsx
 import { Footer } from '@/components/Layout/Footer';
 import { Header } from '@/components/Layout/Header';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { toast } from '@/components/ui/use-toast';
 import apiService from '@/lib/api';
 import { Calendar, PiggyBank, Plus, TrendingUp } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface FixedDeposit {
   id: string;
@@ -24,7 +26,8 @@ interface FixedDeposit {
   status: string;
 }
 
-const FixedDeposits = () => {
+const FixedDeposits: React.FC = () => {
+  const navigate = useNavigate();
   const [fds, setFds] = useState<FixedDeposit[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -38,13 +41,26 @@ const FixedDeposits = () => {
   const fetchFDs = async () => {
     setLoading(true);
     try {
-      const response = await apiService.getFDs();
-      setFds(Array.isArray(response?.fds) ? response.fds : []);
-    } catch (error) {
+      const res: any = await apiService.getFDs();
+      const items = Array.isArray(res?.fds) ? res.fds : [];
+      setFds(
+        items.map((fd: any) => ({
+          id: fd.id || fd._id,
+          amount: fd.amount,
+          tenure: fd.tenure,
+          interestRate: fd.interestRate,
+          maturityAmount: fd.maturityAmount,
+          startDate: fd.startDate,
+          maturityDate: fd.maturityDate,
+          status: fd.status,
+        }))
+      );
+    } catch (err: any) {
+      console.error('Fixed Deposits fetch failed:', err);
       toast({
-        title: "Error",
-        description: "Failed to load Fixed Deposits",
-        variant: "destructive",
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to load Fixed Deposits',
+        variant: 'destructive',
       });
       setFds([]);
     } finally {
@@ -70,20 +86,22 @@ const FixedDeposits = () => {
     try {
       await apiService.createFD({
         amount: parseFloat(fdForm.amount),
-        tenure: parseInt(fdForm.tenure),
+        tenure: parseInt(fdForm.tenure, 10),
       });
+
       toast({
-        title: "Success",
-        description: "Fixed Deposit created successfully",
+        title: 'Success',
+        description: 'Fixed Deposit created successfully',
       });
       setShowCreateForm(false);
       setFdForm({ amount: '', tenure: '' });
       fetchFDs();
     } catch (error: any) {
+      console.error('Create FD error:', error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create FD",
-        variant: "destructive",
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create FD',
+        variant: 'destructive',
       });
     } finally {
       setLoading(false);
@@ -91,21 +109,20 @@ const FixedDeposits = () => {
   };
 
   const handleBreakFD = async (fdId: string) => {
-    if (!window.confirm('Are you sure you want to break this FD? You may lose some interest.')) {
-      return;
-    }
+    if (!window.confirm('Are you sure you want to break this FD? You may lose some interest.')) return;
     try {
       await apiService.breakFD(fdId);
       toast({
-        title: "Success",
-        description: "Fixed Deposit broken successfully",
+        title: 'Success',
+        description: 'Fixed Deposit broken successfully',
       });
-      fetchFDs(); // refresh list after breaking
+      fetchFDs();
     } catch (error: any) {
+      console.error('Break FD error:', error);
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to break FD",
-        variant: "destructive",
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to break FD',
+        variant: 'destructive',
       });
     }
   };
@@ -128,19 +145,29 @@ const FixedDeposits = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-green-100 text-green-800';
-      case 'matured': return 'bg-blue-100 text-blue-800';
-      case 'broken': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'active':
+        return 'bg-green-100 text-green-800';
+      case 'matured':
+        return 'bg-blue-100 text-blue-800';
+      case 'broken':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Fixed Deposits</h1>
+
+      {/* Top toolbar with Back button */}
+      <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div>
+          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+            ← Back to Dashboard
+          </Button>
+        </div>
+        <div>
           <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
             <DialogTrigger asChild>
               <Button>
@@ -148,82 +175,86 @@ const FixedDeposits = () => {
                 Create New FD
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Fixed Deposit</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreateFD} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Amount (₹)</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    min="1000"
-                    step="100"
-                    value={fdForm.amount}
-                    onChange={(e) => setFdForm({ ...fdForm, amount: e.target.value })}
-                    placeholder="Minimum ₹1,000"
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">Minimum amount: ₹1,000</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tenure">Tenure (Months)</Label>
-                  <Select
-                    value={fdForm.tenure}
-                    onValueChange={(value) => setFdForm({ ...fdForm, tenure: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select tenure" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="6">6 Months (6.5% p.a.)</SelectItem>
-                      <SelectItem value="12">12 Months (6.5% p.a.)</SelectItem>
-                      <SelectItem value="18">18 Months (7.0% p.a.)</SelectItem>
-                      <SelectItem value="24">24 Months (7.0% p.a.)</SelectItem>
-                      <SelectItem value="36">36 Months (7.5% p.a.)</SelectItem>
-                      <SelectItem value="60">60 Months (8.0% p.a.)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {fdForm.amount && fdForm.tenure && (
-                  <div className="p-4 bg-muted rounded-lg">
-                    <h4 className="font-semibold mb-2">Calculation Summary</h4>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span>Principal Amount:</span>
-                        <span>₹{parseFloat(fdForm.amount).toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Interest Rate:</span>
-                        <span>{calculateInterestRate(parseInt(fdForm.tenure))}% p.a.</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Tenure:</span>
-                        <span>{fdForm.tenure} months</span>
-                      </div>
-                      <hr className="my-2" />
-                      <div className="flex justify-between font-semibold">
-                        <span>Maturity Amount:</span>
-                        <span>
-                          ₹{calculateMaturityAmount(parseFloat(fdForm.amount), parseInt(fdForm.tenure)).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={loading}>
-                    {loading ? "Creating..." : "Create FD"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setShowCreateForm(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
           </Dialog>
         </div>
+      </div>
+
+      <main className="container mx-auto px-4 py-0">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Fixed Deposits</h1>
+        </div>
+
+        {/* Create Dialog (placed here so Trigger can live in top toolbar) */}
+        <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+          <DialogContent aria-describedby="fd-dialog-desc" className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Create Fixed Deposit</DialogTitle>
+              <p id="fd-dialog-desc" className="sr-only">Form to create a fixed deposit</p>
+            </DialogHeader>
+            <form onSubmit={handleCreateFD} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount (₹)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  min="1000"
+                  step="100"
+                  value={fdForm.amount}
+                  onChange={(e) => setFdForm({ ...fdForm, amount: e.target.value })}
+                  placeholder="Minimum ₹1,000"
+                  required
+                />
+                <p className="text-xs text-muted-foreground">Minimum amount: ₹1,000</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tenure">Tenure (Months)</Label>
+                <Select value={fdForm.tenure} onValueChange={(value) => setFdForm({ ...fdForm, tenure: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select tenure" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="6">6 Months (6.5% p.a.)</SelectItem>
+                    <SelectItem value="12">12 Months (6.5% p.a.)</SelectItem>
+                    <SelectItem value="18">18 Months (7.0% p.a.)</SelectItem>
+                    <SelectItem value="24">24 Months (7.0% p.a.)</SelectItem>
+                    <SelectItem value="36">36 Months (7.5% p.a.)</SelectItem>
+                    <SelectItem value="60">60 Months (8.0% p.a.)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {fdForm.amount && fdForm.tenure && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <h4 className="font-semibold mb-2">Calculation Summary</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Principal Amount:</span>
+                      <span>₹{parseFloat(fdForm.amount).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Interest Rate:</span>
+                      <span>{calculateInterestRate(parseInt(fdForm.tenure, 10))}% p.a.</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tenure:</span>
+                      <span>{fdForm.tenure} months</span>
+                    </div>
+                    <hr className="my-2" />
+                    <div className="flex justify-between font-semibold">
+                      <span>Maturity Amount:</span>
+                      <span>₹{calculateMaturityAmount(parseFloat(fdForm.amount), parseInt(fdForm.tenure, 10)).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button type="submit" disabled={loading}>{loading ? 'Creating...' : 'Create FD'}</Button>
+                <Button type="button" variant="outline" onClick={() => setShowCreateForm(false)}>Cancel</Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Interest Rate Table */}
         <Card className="mb-8">
@@ -334,11 +365,7 @@ const FixedDeposits = () => {
 
                       {fd.status === 'active' && (
                         <div className="flex gap-2">
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleBreakFD(fd.id)}
-                          >
+                          <Button variant="destructive" size="sm" onClick={() => handleBreakFD(fd.id)}>
                             Break FD (Penalty applies)
                           </Button>
                         </div>
