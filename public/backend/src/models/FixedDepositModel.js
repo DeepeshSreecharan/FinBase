@@ -89,9 +89,6 @@ fixedDepositSchema.virtual('currentValue').get(function() {
 });
 
 // Indexes for better query performance
-fixedDepositSchema.index({ userId: 1 });
-fixedDepositSchema.index({ fdNumber: 1 });
-fixedDepositSchema.index({ status: 1 });
-fixedDepositSchema.index({ maturityDate: 1 });
+
 
 module.exports = mongoose.model('FixedDeposit', fixedDepositSchema);

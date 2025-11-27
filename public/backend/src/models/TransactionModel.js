@@ -55,7 +55,5 @@ const transactionSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
-transactionSchema.index({ userId: 1, createdAt: -1 });
-transactionSchema.index({ accountId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Transaction', transactionSchema);
