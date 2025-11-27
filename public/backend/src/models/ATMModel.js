@@ -83,10 +83,7 @@ const atmCardSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Indexes for better query performance
-atmCardSchema.index({ userId: 1 });
-atmCardSchema.index({ cardNumber: 1 });
-atmCardSchema.index({ status: 1 });
+
 
 // Virtual to check if card is expired
 atmCardSchema.virtual('isExpired').get(function() {

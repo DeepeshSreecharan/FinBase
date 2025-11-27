@@ -82,10 +82,6 @@ contactSchema.pre('save', function(next) {
 });
 
 // Indexes for better query performance
-contactSchema.index({ email: 1 });
-contactSchema.index({ status: 1 });
-contactSchema.index({ category: 1 });
-contactSchema.index({ ticketNumber: 1 });
-contactSchema.index({ createdAt: -1 });
+
 
 module.exports = mongoose.model('Contact', contactSchema);
