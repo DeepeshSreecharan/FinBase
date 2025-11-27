@@ -3,15 +3,22 @@ import { Footer } from "@/components/Layout/Footer";
 import { Header } from "@/components/Layout/Header";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import apiService from "@/lib/api";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const AccountsDeduct = () => {
+type AccountData = {
+  accountNumber: string;
+  balance: number;
+  [k: string]: any;
+};
+
+const AccountsDeduct: React.FC = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [amount, setAmount] = useState<number | "">("");
   const [loading, setLoading] = useState(false);
-  const [account, setAccount] = useState<any>(null);
+  const [account, setAccount] = useState<AccountData | null>(null);
 
   // Fetch account details
   useEffect(() => {
@@ -23,56 +30,95 @@ const AccountsDeduct = () => {
 
     const fetchAccount = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/amount/balance", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setAccount(data);
+        const data = await apiService.getBalance();
+        const acc = (data && (data.account || data)) as AccountData;
+        if (acc && acc.accountNumber) {
+          setAccount(acc);
         } else {
-          toast({ title: "Error", description: "Failed to fetch account", variant: "destructive" });
+          toast({
+            title: "Error",
+            description: "Failed to fetch account details",
+            variant: "destructive",
+          });
         }
-      } catch (err) {
-        console.error(err);
-        toast({ title: "Error", description: "Server error", variant: "destructive" });
+      } catch (err: any) {
+        console.error("fetchAccount error:", err);
+        toast({
+          title: "Error",
+          description: err.message || "Server error while fetching account",
+          variant: "destructive",
+        });
       }
     };
 
     fetchAccount();
-  }, [navigate, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
 
   const handleDeduct = async () => {
-    if (!amount || amount <= 0) {
-      toast({ title: "Invalid amount", description: "Enter a valid amount greater than 0", variant: "destructive" });
+    if (amount === "" || Number(amount) <= 0) {
+      toast({
+        title: "Invalid amount",
+        description: "Enter a valid amount greater than 0",
+        variant: "destructive",
+      });
       return;
     }
 
-    const token = localStorage.getItem("cbiusertoken");
-    if (!token) return;
+    if (!account) {
+      toast({
+        title: "Error",
+        description: "No account found",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setLoading(true);
+
     try {
-      const res = await fetch("http://localhost:5000/api/amount/deduct", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount }),
-      });
+      const payload = {
+        amount: Number(amount),
+        accountNumber: account.accountNumber,
+      };
 
-      const data = await res.json();
+      const result = await apiService.deductMoney(payload);
 
-      if (res.ok) {
-        toast({ title: "Success", description: data.message });
-        setAccount(data.account);
+      const updatedAccount = result?.account || result?.data || result;
+      if (updatedAccount && updatedAccount.accountNumber) {
+        setAccount(updatedAccount as AccountData);
         setAmount("");
+        toast({ title: "Success", description: result.message || "Amount deducted" });
+
+        // update localStorage safely
+        try {
+          const userDataStr = localStorage.getItem("cbiuserdata");
+          if (userDataStr) {
+            const user = JSON.parse(userDataStr);
+            user.accounts = user.accounts || [];
+            const idx = user.accounts.findIndex(
+              (acc: any) => acc.accountNumber === updatedAccount.accountNumber
+            );
+            if (idx >= 0) user.accounts[idx].balance = updatedAccount.balance;
+            else user.accounts.push(updatedAccount);
+            localStorage.setItem("cbiuserdata", JSON.stringify(user));
+          }
+        } catch (err) {
+          console.warn("Failed to update local user data:", err);
+        }
+
+        // notify dashboard
+        window.dispatchEvent(new Event("refreshDashboard"));
       } else {
-        toast({ title: "Error", description: data.message, variant: "destructive" });
+        toast({ title: "Warning", description: result?.message || "Operation completed" });
       }
-    } catch (err) {
-      console.error(err);
-      toast({ title: "Error", description: "Server error", variant: "destructive" });
+    } catch (err: any) {
+      console.error("handleDeduct error:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Server error while deducting",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -82,11 +128,17 @@ const AccountsDeduct = () => {
     <div className="min-h-screen bg-background">
       <Header />
       <div className="container py-16 max-w-lg">
-        <h1 className="text-2xl font-bold mb-6">Deduct Money</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Deduct Money</h1>
+          <Button variant="outline" onClick={() => navigate("/dashboard")}>
+            Back to Dashboard
+          </Button>
+        </div>
+
         {account ? (
           <div className="p-4 border rounded mb-6">
-            <p>Account Number: {account.accountNumber}</p>
-            <p>Balance: ₹{account.balance.toLocaleString()}</p>
+            <p className="font-medium">Account Number: {account.accountNumber}</p>
+            <p className="text-lg font-semibold mt-1">Balance: ₹{account.balance.toLocaleString()}</p>
           </div>
         ) : (
           <p>Loading account details...</p>
@@ -97,14 +149,11 @@ const AccountsDeduct = () => {
           placeholder="Enter amount to deduct"
           className="w-full p-3 border rounded mb-4"
           value={amount}
-          onChange={(e) => setAmount(Number(e.target.value))}
+          onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
+          min={1}
         />
         <Button className="w-full" onClick={handleDeduct} disabled={loading}>
           {loading ? "Processing..." : "Deduct Money"}
-        </Button>
-
-        <Button variant="outline" className="w-full mt-4" onClick={() => navigate("/dashboard")}>
-          Back to Dashboard
         </Button>
       </div>
       <Footer />

@@ -7,6 +7,7 @@ import { HeroButton } from "@/components/ui/hero-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import apiService from "@/lib/api";
 import { ArrowLeft, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -26,58 +27,42 @@ const Login = () => {
     setLoading(true);
 
     try {
-      // normalize email (important — registration lowercases email on the server).
       const payload = {
         email: formData.email.trim().toLowerCase(),
-        password: formData.password // do NOT trim password (users may intentionally have spaces)
+        password: formData.password // don't trim passwords
       };
 
-      // quick client-side checks
       if (!payload.email || !payload.password) {
         toast({ title: "Missing fields", description: "Please enter email and password", variant: "destructive" });
         setLoading(false);
         return;
       }
 
-      const response = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      // use apiService.login (centralized URL + error handling)
+      const data = await apiService.login(payload);
 
-      // Read server body safely (it returns JSON for validation/errors)
-      const data = await response.json().catch(() => ({}));
-
-      if (response.ok && data.token) {
-        localStorage.setItem('cbiusertoken', data.token);
-        if (data.user) localStorage.setItem('cbiuserdata', JSON.stringify(data.user));
+      // apiService.handleResponse will throw on non-2xx, so if we get here it's ok
+      if (data?.token) {
+        localStorage.setItem("cbiusertoken", data.token);
+        if (data.user) localStorage.setItem("cbiuserdata", JSON.stringify(data.user));
 
         toast({
           title: "Welcome back!",
           description: "You have successfully logged in to your CBI Bank account.",
         });
 
-        navigate('/dashboard');
+        navigate("/dashboard");
       } else {
-        // If validation or auth failed, show server-provided message(s)
-        const serverMsg = data.message || "Please check your credentials and try again.";
-
-        // If the server returned validation errors array (validation.middleware shape), show first few
-        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-          data.errors.slice(0, 3).forEach((err: any) => {
-            toast({ title: err.field || "Validation", description: err.message, variant: "destructive" });
-          });
-        } else {
-          toast({ title: "Login failed", description: serverMsg, variant: "destructive" });
-        }
-
-        throw new Error(serverMsg);
+        // defensive fallback
+        const msg = data?.message || "Login succeeded but token missing. Check server.";
+        toast({ title: "Login issue", description: msg, variant: "destructive" });
       }
-    } catch (error: any) {
-      // Already displayed the server message above; this ensures unexpected errors are also shown
-      if (!error?.message) {
-        toast({ title: "Login failed", description: "Unexpected error. Check server logs.", variant: "destructive" });
-      }
+    } catch (err: any) {
+      // apiService throws Error with readable message
+      const msg = err?.message || "Unexpected error. Check server logs.";
+      // if server returned validation array, apiService will have thrown a combined message,
+      // but just in case show the message
+      toast({ title: "Login failed", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }

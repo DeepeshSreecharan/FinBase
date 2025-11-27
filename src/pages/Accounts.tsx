@@ -3,8 +3,15 @@ import { Footer } from "@/components/Layout/Footer";
 import { Header } from "@/components/Layout/Header";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import apiService from "@/lib/api";
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+
+type AccountData = {
+  accountNumber: string;
+  balance: number;
+  [k: string]: any;
+};
 
 const Accounts: React.FC = () => {
   const navigate = useNavigate();
@@ -14,7 +21,7 @@ const Accounts: React.FC = () => {
   const [amount, setAmount] = useState<number | "">("");
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [account, setAccount] = useState<any>(null);
+  const [account, setAccount] = useState<AccountData | null>(null);
 
   const isAddMode = location.state?.mode !== "deduct";
 
@@ -28,93 +35,107 @@ const Accounts: React.FC = () => {
 
     const fetchAccount = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/amount/balance", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setAccount(data);
+        const data = await apiService.getBalance();
+        // backend response shape may vary; try common shapes
+        // prefer data.account, fallback to data
+        const acc = (data && (data.account || data)) as AccountData;
+        if (acc && acc.accountNumber) {
+          setAccount(acc);
         } else {
-          toast({ title: "Error", description: "Failed to fetch account", variant: "destructive" });
+          toast({
+            title: "Error",
+            description: "Failed to fetch account details",
+            variant: "destructive",
+          });
         }
-      } catch (err) {
-        console.error(err);
-        toast({ title: "Error", description: "Server error", variant: "destructive" });
+      } catch (err: any) {
+        console.error("fetchAccount error:", err);
+        toast({
+          title: "Error",
+          description: err.message || "Server error while fetching account",
+          variant: "destructive",
+        });
       }
     };
 
     fetchAccount();
-  }, [navigate, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
 
   // Add / Deduct money
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!amount || amount <= 0) {
+
+    if (amount === "" || Number(amount) <= 0) {
       toast({
         title: "Invalid amount",
-        description: "Enter a valid amount > 0",
+        description: "Enter a valid amount greater than 0",
         variant: "destructive",
       });
       return;
     }
 
     if (!account) {
-      toast({ title: "Error", description: "No account found", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "No account found",
+        variant: "destructive",
+      });
       return;
     }
-
-    const token = localStorage.getItem("cbiusertoken");
-    if (!token) return;
 
     setLoading(true);
     setStatus(null);
 
     try {
-      const url = isAddMode
-        ? "http://localhost:5000/api/amount/add"
-        : "http://localhost:5000/api/amount/deduct";
+      const payload = {
+        amount: Number(amount),
+        accountNumber: account.accountNumber,
+      };
 
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount,
-          accountNumber: account.accountNumber,
-        }),
-      });
+      let result: any;
+      if (isAddMode) {
+        result = await apiService.addMoney(payload);
+      } else {
+        result = await apiService.deductMoney(payload);
+      }
 
-      const data = await res.json();
-
-      if (res.ok) {
-        toast({ title: "Success", description: data.message });
-        setAccount(data.account);
+      // result expected to include updated account or message
+      const updatedAccount = result?.account || result?.data || result;
+      if (updatedAccount && updatedAccount.accountNumber) {
+        setAccount(updatedAccount as AccountData);
         setAmount("");
         setStatus("success");
 
-        // Update localStorage
-        const userDataStr = localStorage.getItem("cbiuserdata");
-        if (userDataStr) {
-          const user = JSON.parse(userDataStr);
-          user.accounts = user.accounts || [];
-          const idx = user.accounts.findIndex(
-            (acc: any) => acc.accountNumber === data.account.accountNumber
-          );
-          if (idx >= 0) user.accounts[idx].balance = data.account.balance;
-          else user.accounts.push(data.account);
-          localStorage.setItem("cbiuserdata", JSON.stringify(user));
+        toast({ title: "Success", description: result.message || "Operation successful" });
+
+        // Update localStorage.user data safely
+        try {
+          const userDataStr = localStorage.getItem("cbiuserdata");
+          if (userDataStr) {
+            const user = JSON.parse(userDataStr);
+            user.accounts = user.accounts || [];
+            const idx = user.accounts.findIndex(
+              (acc: any) => acc.accountNumber === updatedAccount.accountNumber
+            );
+            if (idx >= 0) user.accounts[idx].balance = updatedAccount.balance;
+            else user.accounts.push(updatedAccount);
+            localStorage.setItem("cbiuserdata", JSON.stringify(user));
+          }
+        } catch (err) {
+          console.warn("Failed to update local user data:", err);
         }
 
-        // Trigger dashboard refresh
+        // Notify dashboard to refresh
         window.dispatchEvent(new Event("refreshDashboard"));
       } else {
-        setStatus(data.message || "Operation failed");
+        setStatus(result?.message || "Operation completed but no account returned");
       }
     } catch (err: any) {
-      console.error(err);
-      setStatus(err.message || "Server error");
+      console.error("handleSubmit error:", err);
+      const msg = err?.message || "Server error";
+      setStatus(msg);
+      toast({ title: "Operation failed", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -137,10 +158,14 @@ const Accounts: React.FC = () => {
             {isAddMode ? "Add Money" : "Deduct Money"}
           </h2>
 
-          {account && (
+          {account ? (
             <div className="p-4 border rounded mb-6 text-center">
-              <p>Account Number: {account.accountNumber}</p>
-              <p>Balance: ₹{account.balance.toLocaleString()}</p>
+              <p className="font-medium">Account Number: {account.accountNumber}</p>
+              <p className="text-lg font-semibold mt-1">Balance: ₹{account.balance.toLocaleString()}</p>
+            </div>
+          ) : (
+            <div className="p-4 border rounded mb-6 text-center text-muted-foreground">
+              Loading account...
             </div>
           )}
 
@@ -149,23 +174,20 @@ const Accounts: React.FC = () => {
               type="number"
               placeholder="Enter amount"
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              onChange={(e) => {
+                const val = e.target.value;
+                setAmount(val === "" ? "" : Number(val));
+              }}
               className="w-full px-3 py-2 border rounded focus:outline-none"
               min={1}
               required
             />
             <button
               type="submit"
-              className="w-full py-2 px-4 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none"
+              className="w-full py-2 px-4 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 focus:outline-none disabled:opacity-60"
               disabled={loading}
             >
-              {loading
-                ? isAddMode
-                  ? "Adding..."
-                  : "Deducting..."
-                : isAddMode
-                ? "Add Money"
-                : "Deduct Money"}
+              {loading ? (isAddMode ? "Adding..." : "Deducting...") : isAddMode ? "Add Money" : "Deduct Money"}
             </button>
           </form>
 

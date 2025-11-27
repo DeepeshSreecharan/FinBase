@@ -1,9 +1,11 @@
+// src/pages/Dashboard.tsx
 import { Footer } from "@/components/Layout/Footer";
 import { Header } from "@/components/Layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { HeroButton } from "@/components/ui/hero-button";
 import { useToast } from "@/hooks/use-toast";
+import apiService from "@/lib/api";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -29,10 +31,12 @@ interface Transaction {
 }
 
 interface Account {
-  id: string;
+  id?: string;
   accountNumber: string;
-  type: string;
+  accountType?: string;
+  type?: string;
   balance: number;
+  [k: string]: any;
 }
 
 const Dashboard = () => {
@@ -53,60 +57,58 @@ const Dashboard = () => {
 
     setRefreshing(true);
     try {
-      // --- Fetch account details ---
-      const accountResponse = await fetch("http://localhost:5000/api/amount/balance", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      // --- Fetch account details via apiService ---
+      const accountRes = await apiService.getBalance();
+      const acc = accountRes?.account || accountRes;
+      if (acc && acc.accountNumber) {
+        setAccountDetails(acc as Account);
 
-      if (accountResponse.ok) {
-        const accountData = await accountResponse.json();
-        setAccountDetails(accountData);
-
-        // Update localStorage user data
-        const userDataStr = localStorage.getItem("cbiuserdata");
-        if (userDataStr) {
-          const user = JSON.parse(userDataStr);
-          user.accounts = user.accounts || [];
-          const index = user.accounts.findIndex((acc: any) => acc.accountNumber === accountData.accountNumber);
-          if (index >= 0) {
-            user.accounts[index].balance = accountData.balance;
-          } else {
-            user.accounts.push({
-              id: accountData.accountNumber,
-              accountNumber: accountData.accountNumber,
-              type: accountData.accountType,
-              balance: accountData.balance,
+        // Update localStorage user data safely
+        try {
+          const userDataStr = localStorage.getItem("cbiuserdata");
+          if (userDataStr) {
+            const user = JSON.parse(userDataStr);
+            user.accounts = user.accounts || [];
+            const index = user.accounts.findIndex((a: any) => a.accountNumber === acc.accountNumber);
+            if (index >= 0) user.accounts[index].balance = acc.balance;
+            else user.accounts.push({
+              id: acc.accountNumber,
+              accountNumber: acc.accountNumber,
+              type: acc.accountType || acc.type || "savings",
+              balance: acc.balance,
             });
+            localStorage.setItem("cbiuserdata", JSON.stringify(user));
+            setUserData(user);
           }
-
-          localStorage.setItem("cbiuserdata", JSON.stringify(user));
-          setUserData(user);
+        } catch (err) {
+          console.warn("Failed to sync local user data:", err);
         }
       }
 
-      // --- Fetch latest transactions ---
-      const transResponse = await fetch("http://localhost:5000/api/transactions?limit=5", {
-        headers: { Authorization: `Bearer ${token}` },
+      // --- Fetch latest transactions via apiService ---
+      const transRes = await apiService.getTransactions({ limit: 5 });
+      const transList = transRes?.transactions || transRes?.data || [];
+      const formatted = (transList || []).map((t: any) => ({
+        id: t._id || t.id,
+        type: (t.type || "debit").toLowerCase(),
+        amount: t.amount,
+        description: t.description || t.narration || "Transaction",
+        date: new Date(t.createdAt || t.date || Date.now()).toLocaleDateString(),
+        status: t.status || "Completed",
+      })) as Transaction[];
+      setTransactions(formatted);
+    } catch (err: any) {
+      console.error("❌ Error fetching dashboard data:", err);
+      // show a single toast on error (avoid spamming)
+      toast({
+        title: "Data fetch error",
+        description: err.message || "Unable to fetch account/transaction data",
+        variant: "destructive",
       });
-
-      if (transResponse.ok) {
-        const transData = await transResponse.json();
-        const formatted = (transData.transactions || []).map((t: any) => ({
-          id: t._id || t.id,
-          type: t.type.toLowerCase(),
-          amount: t.amount,
-          description: t.description,
-          date: new Date(t.createdAt || t.date).toLocaleDateString(),
-          status: t.status || "Completed",
-        }));
-        setTransactions(formatted);
-      }
-    } catch (err) {
-      console.error("❌ Error fetching data:", err);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [toast]);
 
   // On mount: verify login & load initial data
   useEffect(() => {
@@ -141,7 +143,7 @@ const Dashboard = () => {
     return () => window.removeEventListener("focus", handleFocus);
   }, [fetchAccountData]);
 
-  // ** NEW: Auto refresh when money is added/deducted **
+  // Auto refresh when money is added/deducted
   useEffect(() => {
     const handleRefresh = () => fetchAccountData();
     window.addEventListener("refreshDashboard", handleRefresh);
@@ -169,8 +171,7 @@ const Dashboard = () => {
 
   const totalBalance =
     accountDetails?.balance ||
-    userData.accounts?.reduce((sum: number, acc: any) => sum + (acc.balance || 0), 0) ||
-    0;
+    (userData.accounts?.reduce((sum: number, acc: any) => sum + (acc.balance || 0), 0) || 0);
 
   const monthlyStats = transactions.reduce(
     (acc, t) => {
@@ -280,7 +281,7 @@ const Dashboard = () => {
                         <CreditCard className="h-5 w-5 text-primary" />
                       </div>
                       <div>
-                        <p className="font-semibold">{accountDetails.type} Account</p>
+                        <p className="font-semibold">{accountDetails.type || accountDetails.accountType} Account</p>
                         <p className="text-sm text-muted-foreground">{accountDetails.accountNumber}</p>
                       </div>
                     </div>
@@ -293,7 +294,7 @@ const Dashboard = () => {
                   </div>
                 ) : (
                   userData.accounts?.map((account: any) => (
-                    <div key={account.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div key={account.id || account.accountNumber} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex items-center space-x-4">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
                           <CreditCard className="h-5 w-5 text-primary" />
@@ -305,7 +306,7 @@ const Dashboard = () => {
                       </div>
                       <div className="text-right">
                         <p className="font-semibold">
-                          {showBalance ? `₹${totalBalance.toLocaleString()}` : "₹••••••"}
+                          {showBalance ? `₹${(account.balance || 0).toLocaleString()}` : "₹••••••"}
                         </p>
                         <p className="text-sm text-muted-foreground">Available</p>
                       </div>
