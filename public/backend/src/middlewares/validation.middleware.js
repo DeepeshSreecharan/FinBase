@@ -51,7 +51,7 @@ const schemas = {
     password: Joi.string()
       .min(8)
       .max(128)
-      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+      .pattern(/^(?=.[a-z])(?=.[A-Z])(?=.\d)(?=.[@$!%?&])[A-Za-z\d@$!%?&]/)
       .required()
       .messages({
         'string.min': 'Password must be at least 8 characters long',
@@ -337,9 +337,57 @@ const querySchemas = {
   })
 };
 
+const validateRegister = (req, res, next) => {
+  const { name, email, phone, password, dateOfBirth, address, agreedToTerms, confirmPassword } = req.body;
+
+  // Check required fields
+  if (!name || !email || !phone || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Missing required fields: name, email, phone, and password are required.'
+    });
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid email format'
+    });
+  }
+
+  // Validate password strength
+  if (password.length < 8) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password must be at least 8 characters'
+    });
+  }
+
+  // Check password confirmation
+  if (confirmPassword && password !== confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Passwords do not match'
+    });
+  }
+
+  // Check terms agreement
+  if (!agreedToTerms) {
+    return res.status(400).json({
+      success: false,
+      message: 'You must agree to the terms and conditions'
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   validate,
   validateQueryParams,
   schemas,
-  querySchemas
+  querySchemas,
+  validateRegister
 };
