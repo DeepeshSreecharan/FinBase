@@ -3,36 +3,38 @@ class ApiService {
   baseURL: string;
 
   constructor() {
-    // Try multiple environment variable names (Vite and Next.js)
-    const viteUrl =
-      // import.meta may be undefined in some runtimes, guard access
+    // Read env from Vite (import.meta.env) or Next (process.env)
+    const viteEnv =
       typeof import.meta !== "undefined" && (import.meta as any).env
-        ? (import.meta as any).env.VITE_API_URL || (import.meta as any).env.VITE_API
+        ? (import.meta as any).env.VITE_API_URL ||
+          (import.meta as any).env.VITE_API ||
+          undefined
         : undefined;
 
-    const nextUrl =
+    const nextEnv =
       typeof process !== "undefined" && process.env
         ? process.env.NEXT_PUBLIC_API
         : undefined;
 
-    // priority: Vite env (if present) -> Next.js env -> fallback localhost
-    let base = (viteUrl || nextUrl || "http://localhost:5000").trim();
+    // Priority: Vite -> Next -> localhost
+    let base = (viteEnv || nextEnv || "http://localhost:5000").trim();
 
     // remove trailing slashes
     base = base.replace(/\/+$/, "");
 
-    // If the provided base DOES NOT contain '/api' anywhere, append '/api'
+    // ensure the base ends with /api
     if (!/\/api(\/|$)/.test(base)) {
       base = `${base}/api`;
     }
 
     this.baseURL = base;
+     console.info('[ApiService] baseURL =', this.baseURL); // uncomment for one-time debug
   }
 
   // ------------------------
-  // 🔑 Auth helpers
+  // Auth helpers
   // ------------------------
-  private getToken() {
+  private getToken(): string | null {
     try {
       return localStorage.getItem("cbiusertoken");
     } catch {
@@ -40,10 +42,9 @@ class ApiService {
     }
   }
 
-  private getAuthHeaders() {
+  private getAuthHeaders(): Record<string, string> {
     const token = this.getToken();
     return {
-      "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   }
@@ -53,7 +54,6 @@ class ApiService {
     try {
       data = await response.json();
     } catch {
-      // not JSON — try text
       try {
         data = await response.text();
       } catch {
@@ -72,18 +72,34 @@ class ApiService {
     return data;
   }
 
-  // internal request helper: ensures proper URL and credentials
-  private async request(
-    path: string,
-    options: RequestInit = {}
-  ): Promise<any> {
-    const cleanPath = path.replace(/^\/+/, ""); // remove leading slash if present
+  // internal request helper: builds URL, merges headers and options
+  private async request(path: string, options: RequestInit = {}) {
+    const cleanPath = path.replace(/^\/+/, "");
     const url = `${this.baseURL}/${cleanPath}`;
 
-    // default fetch options
+    // merge headers: explicit options.headers -> auth headers -> default content-type if body present
+    const optHeaders = (options.headers || {}) as Record<string, string>;
+    const authHeaders = this.getAuthHeaders();
+
+    const mergedHeaders: Record<string, string> = {
+      ...(authHeaders || {}),
+      ...optHeaders,
+    };
+
+    // ensure Content-Type for JSON bodies unless already set
+    if (
+      options.body !== undefined &&
+      !Object.keys(mergedHeaders).some((h) =>
+        h.toLowerCase().startsWith("content-type")
+      )
+    ) {
+      mergedHeaders["Content-Type"] = "application/json";
+    }
+
     const fetchOpts: RequestInit = {
-      credentials: "include", // include cookies if backend uses them (safe)
+      credentials: "include",
       ...options,
+      headers: mergedHeaders,
     };
 
     const res = await fetch(url, fetchOpts);
@@ -91,12 +107,11 @@ class ApiService {
   }
 
   // ------------------------
-  // 🔑 Auth APIs
+  // Auth APIs
   // ------------------------
   async register(data: { name: string; email: string; password: string }) {
     return this.request("auth/register", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
   }
@@ -104,38 +119,31 @@ class ApiService {
   async login(data: { email: string; password: string }) {
     return this.request("auth/login", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
   }
 
   async getProfile() {
-    return this.request("auth/profile", {
-      headers: this.getAuthHeaders(),
-    });
+    return this.request("auth/profile", {});
   }
 
   async updateProfile(data: { name?: string; phone?: string; address?: string }) {
     return this.request("auth/profile/update", {
       method: "PUT",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
 
   // ------------------------
-  // 🏦 Account APIs
+  // Account APIs
   // ------------------------
   async getBalance() {
-    return this.request("amount/balance", {
-      headers: this.getAuthHeaders(),
-    });
+    return this.request("amount/balance", {});
   }
 
   async addMoney(data: { amount: number; accountNumber: string }) {
     return this.request("amount/add", {
       method: "POST",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
@@ -143,13 +151,12 @@ class ApiService {
   async deductMoney(data: { amount: number; accountNumber: string }) {
     return this.request("amount/deduct", {
       method: "POST",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
 
   // ------------------------
-  // 💳 Transaction APIs
+  // Transactions
   // ------------------------
   async getTransactions(params: {
     page?: number;
@@ -164,20 +171,19 @@ class ApiService {
     }, {});
     const query = new URLSearchParams(qObj).toString();
     const path = query ? `transactions?${query}` : "transactions";
-    return this.request(path, { headers: this.getAuthHeaders() });
+    return this.request(path, {});
   }
 
   // ------------------------
-  // 💳 ATM Card APIs
+  // ATM Card APIs
   // ------------------------
   async getATMCards() {
-    return this.request("atm", { headers: this.getAuthHeaders() });
+    return this.request("atm", {});
   }
 
   async requestATMCard(data: { cardType: string; deliveryAddress: string }) {
     return this.request("atm/request", {
       method: "POST",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
@@ -185,7 +191,6 @@ class ApiService {
   async setATMPin(data: { cardId: string; pin: string; confirmPin: string }) {
     return this.request("atm/set-pin", {
       method: "POST",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
@@ -193,22 +198,19 @@ class ApiService {
   async toggleBlockCard(cardId: string, action: "block" | "unblock") {
     return this.request(`atm/${cardId}/${action}`, {
       method: "POST",
-      headers: this.getAuthHeaders(),
     });
   }
 
   // ------------------------
-  // 🏦 FIXED DEPOSIT APIs
-  // Backend path is /api/fd
+  // Fixed Deposits
   // ------------------------
   async getFDs() {
-    return this.request("fd", { headers: this.getAuthHeaders() });
+    return this.request("fd", {});
   }
 
   async createFD(data: { amount: number; tenure: number }) {
     return this.request("fd/create", {
       method: "POST",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
@@ -216,12 +218,11 @@ class ApiService {
   async breakFD(fdId: string) {
     return this.request(`fd/${fdId}/break`, {
       method: "POST",
-      headers: this.getAuthHeaders(),
     });
   }
 
   // ------------------------
-  // 📩 Contact
+  // Contact
   // ------------------------
   async submitContact(data: {
     name: string;
@@ -232,7 +233,6 @@ class ApiService {
   }) {
     return this.request("contact/submit", {
       method: "POST",
-      headers: this.getAuthHeaders(),
       body: JSON.stringify(data),
     });
   }
