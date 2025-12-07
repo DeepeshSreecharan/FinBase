@@ -226,7 +226,8 @@ const Index = () => {
                 variant="outline" 
                 size="lg"
                 onClick={() => navigate('/contact')}
-                className="border-white/20 text-white hover:bg-white/10"
+                className=" border-gray-300 text-gray-700 hover:bg-gray-100
+    dark:border-white/20 dark:text-white dark:hover:bg-white/10"
               >
                 <Phone className="h-4 w-4 mr-2" />
                 Contact Support
